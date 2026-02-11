@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solana Token Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-8">
+
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6 text-cyan-400">Solana Trade History</h1>
+        
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl mb-8 border border-gray-700">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Wallet Address</label>
+                    <input id="walletAddr" type="text" placeholder="Esempio: 86xCnPe..." 
+                           class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Token Mint Address</label>
+                    <input id="tokenMint" type="text" placeholder="Esempio: So111..." 
+                           class="w-full bg-gray-700 border border-gray-600 rounded p-2 text-white">
+                </div>
+            </div>
+            <button onclick="fetchHistory()" class="mt-4 w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded transition">
+                Analizza Transazioni
+            </button>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg shadow-xl overflow-hidden border border-gray-700">
+            <table class="w-full text-left border-collapse">
+                <thead class="bg-gray-700 text-gray-300">
+                    <tr>
+                        <th class="p-3">Data</th>
+                        <th class="p-3">Tipo</th>
+                        <th class="p-3">Token In</th>
+                        <th class="p-3">Token Out</th>
+                        <th class="p-3">Dettagli</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody" class="divide-y divide-gray-700">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // SOSTITUISCI CON LA TUA API KEY DI HELIUS
+        const API_KEY = "LA_TUA_API_KEY_QUI"; 
+
+        async function fetchHistory() {
+            const wallet = document.getElementById('walletAddr').value.trim();
+            const tokenMint = document.getElementById('tokenMint').value.trim();
+            const resultsBody = document.getElementById('resultsBody');
+
+            if (!wallet || !tokenMint) {
+                alert("Inserisci sia il wallet che il token mint!");
+                return;
+            }
+
+            resultsBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center">Caricamento in corso...</td></tr>';
+
+            try {
+                // Utilizziamo l'endpoint Enhanced Transactions di Helius
+                const url = `https://api.helius.xyz/v0/addresses/${wallet}/transactions?api-key=${API_KEY}`;
+                const response = await fetch(url);
+                const data = await response.json();
+
+                resultsBody.innerHTML = '';
+
+                // Filtriamo le transazioni che sono SWAP e coinvolgono il token specificato
+                const filteredSwaps = data.filter(tx => {
+                    if (tx.type !== "SWAP") return false;
+                    
+                    // Controlliamo se il token desiderato è presente nei trasferimenti della transazione
+                    return tx.tokenTransfers.some(transfer => 
+                        transfer.mint === tokenMint
+                    );
+                });
+
+                if (filteredSwaps.length === 0) {
+                    resultsBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center">Nessun trade trovato per questo token.</td></tr>';
+                    return;
+                }
+
+                filteredSwaps.forEach(tx => {
+                    const date = new Date(tx.timestamp * 1000).toLocaleString();
+                    
+                    // Identifichiamo se è un ACQUISTO o una VENDITA del token target
+                    let typeLabel = '<span class="text-gray-400">Unknown</span>';
+                    let tokenIn = "-";
+                    let tokenOut = "-";
+
+                    // Logica semplificata per estrarre i dati dello swap
+                    // Nota: tx.tokenTransfers contiene tutti i movimenti
+                    tx.tokenTransfers.forEach(tt => {
+                        if (tt.toUser === wallet) {
+                            tokenIn = `${tt.tokenAmount} ${tt.mint.slice(0,4)}...`;
+                            if (tt.mint === tokenMint) typeLabel = '<span class="text-green-400 font-bold">BUY</span>';
+                        }
+                        if (tt.fromUser === wallet) {
+                            tokenOut = `${tt.tokenAmount} ${tt.mint.slice(0,4)}...`;
+                            if (tt.mint === tokenMint) typeLabel = '<span class="text-red-400 font-bold">SELL</span>';
+                        }
+                    });
+
+                    const row = `
+                        <tr class="hover:bg-gray-700 transition">
+                            <td class="p-3 text-sm text-gray-400">${date}</td>
+                            <td class="p-3">${typeLabel}</td>
+                            <td class="p-3 text-sm">${tokenIn}</td>
+                            <td class="p-3 text-sm">${tokenOut}</td>
+                            <td class="p-3">
+                                <a href="https://solscan.io/tx/${tx.signature}" target="_blank" class="text-cyan-400 hover:underline text-xs">Solscan ↗</a>
+                            </td>
+                        </tr>
+                    `;
+                    resultsBody.innerHTML += row;
+                });
+
+            } catch (error) {
+                console.error(error);
+                resultsBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-500">Errore nel recupero dati. Controlla la console.</td></tr>';
+            }
+        }
+    </script>
+</body>
+</html>
